@@ -161,22 +161,25 @@ func TestThreadGroupRace(t *testing.T) {
 
 func TestThreadGroupClosedOnStop(t *testing.T) {
 	var tg ThreadGroup
-	var closed bool
-	go tg.OnStop(func() { closed = true })
-	if closed {
+	c := make(chan struct{})
+	go tg.OnStop(func() { close(c) })
+	select {
+	case <-c:
 		t.Fatal("close function should not have been called yet")
+	default:
 	}
 	if !tg.Stop() {
 		t.Fatal("Already stopped?")
 	}
-	time.Sleep(time.Millisecond)
-	if !closed {
+	select {
+	case <-c:
+	case <-time.After(time.Second):
 		t.Fatal("close function should have been called")
 	}
 
 	// Stop has already been called, so the close function should be called
 	// immediately
-	closed = false
+	closed := false
 	tg.OnStop(func() { closed = true })
 	if !closed {
 		t.Fatal("close function should have been called immediately")
