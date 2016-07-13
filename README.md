@@ -18,6 +18,9 @@ returned.
 
 3. Free any resources used by the goroutines.
 
+The pattern is similar to the approach described [here](https://rcrowley.org/articles/golang-graceful-stop.html), but in a more
+convenient package.
+
 ## Example
 
 ```go
