@@ -1,6 +1,7 @@
 package threadgroup
 
 import (
+	"context"
 	"net"
 	"sync"
 	"testing"
@@ -202,4 +203,17 @@ func BenchmarkWaitGroup(b *testing.B) {
 		go wg.Done()
 	}
 	wg.Wait()
+}
+
+// TestNewContext tests that contexts created by NewContext are canceled when
+// their associated ThreadGroup is stopped.
+func TestNewContext(t *testing.T) {
+	var tg ThreadGroup
+	ctx := tg.NewContext(context.Background())
+	tg.Stop()
+	select {
+	case <-ctx.Done():
+	case <-time.After(1 * time.Second):
+		t.Fatal("context should have been canceled")
+	}
 }

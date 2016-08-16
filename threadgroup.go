@@ -15,7 +15,10 @@
 // 3. Free any resources used by the goroutines.
 package threadgroup
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 // A ThreadGroup is a sync.WaitGroup with additional functionality for
 // facilitating clean shutdown. Namely, it provides a StopChan method for
@@ -108,4 +111,18 @@ func (tg *ThreadGroup) Stop() bool {
 func (tg *ThreadGroup) OnStop(fn func()) {
 	<-tg.StopChan()
 	fn()
+}
+
+// NewContext returns a Context that is canceled either when parent is canceled
+// or when Stop is called.
+func (tg *ThreadGroup) NewContext(parent context.Context) context.Context {
+	ctx, cancel := context.WithCancel(parent)
+	go func() {
+		select {
+		case <-tg.StopChan():
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx
 }
