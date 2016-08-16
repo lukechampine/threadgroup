@@ -34,9 +34,8 @@ func TestThreadGroup(t *testing.T) {
 	}
 }
 
-// TestThreadGroupStop tests the behavior of a ThreadGroup after Stop has been
-// called.
-func TestThreadGroupStop(t *testing.T) {
+// TestStop tests the behavior of a ThreadGroup after Stop has been called.
+func TestStop(t *testing.T) {
 	var tg ThreadGroup
 
 	// IsStopped should return false
@@ -62,8 +61,8 @@ func TestThreadGroupStop(t *testing.T) {
 	}
 }
 
-// TestThreadGroupConcurrentAdd tests that Add can be called concurrently with Stop.
-func TestThreadGroupConcurrentAdd(t *testing.T) {
+// TestConcurrentAdd tests that Add can be called concurrently with Stop.
+func TestConcurrentAdd(t *testing.T) {
 	var tg ThreadGroup
 	for i := 0; i < 10; i++ {
 		go func() {
@@ -84,9 +83,9 @@ func TestThreadGroupConcurrentAdd(t *testing.T) {
 	}
 }
 
-// TestThreadGroupOnce tests that a zero-valued ThreadGroup's stopChan is
-// properly initialized.
-func TestThreadGroupOnce(t *testing.T) {
+// TestOnce tests that a zero-valued ThreadGroup's stopChan is properly
+// initialized.
+func TestOnce(t *testing.T) {
 	tg := new(ThreadGroup)
 	if tg.stopChan != nil {
 		t.Error("expected nil stopChan")
@@ -117,9 +116,9 @@ func TestThreadGroupOnce(t *testing.T) {
 	}
 }
 
-// TestThreadGroupOnStop tests that Stop calls functions registered with
+// TestOnStop tests that Stop calls functions registered with
 // OnStop.
-func TestThreadGroupOnStop(t *testing.T) {
+func TestOnStop(t *testing.T) {
 	l, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
@@ -144,9 +143,34 @@ func TestThreadGroupOnStop(t *testing.T) {
 	}
 }
 
-// TestThreadGroupRace tests that calling ThreadGroup methods concurrently
-// does not trigger the race detector.
-func TestThreadGroupRace(t *testing.T) {
+// TestClosedOnStop tests that OnStop returns immediately if the ThreadGroup
+// has already been stopped.
+func TestClosedOnStop(t *testing.T) {
+	var tg ThreadGroup
+	tg.Stop()
+	closed := false
+	tg.OnStop(func() { closed = true })
+	if !closed {
+		t.Fatal("close function should have been called immediately")
+	}
+}
+
+// TestNewContext tests that contexts created by NewContext are canceled when
+// their associated ThreadGroup is stopped.
+func TestNewContext(t *testing.T) {
+	var tg ThreadGroup
+	ctx := tg.NewContext(context.Background())
+	tg.Stop()
+	select {
+	case <-ctx.Done():
+	case <-time.After(1 * time.Second):
+		t.Fatal("context should have been canceled")
+	}
+}
+
+// TestRace tests that calling ThreadGroup methods concurrently does not
+// trigger the race detector.
+func TestRace(t *testing.T) {
 	var tg ThreadGroup
 	go tg.IsStopped()
 	go tg.StopChan()
@@ -155,36 +179,7 @@ func TestThreadGroupRace(t *testing.T) {
 			tg.Done()
 		}
 	}()
-	if !tg.Stop() {
-		t.Fatal("Already stopped?")
-	}
-}
-
-func TestThreadGroupClosedOnStop(t *testing.T) {
-	var tg ThreadGroup
-	c := make(chan struct{})
-	go tg.OnStop(func() { close(c) })
-	select {
-	case <-c:
-		t.Fatal("close function should not have been called yet")
-	default:
-	}
-	if !tg.Stop() {
-		t.Fatal("Already stopped?")
-	}
-	select {
-	case <-c:
-	case <-time.After(time.Second):
-		t.Fatal("close function should have been called")
-	}
-
-	// Stop has already been called, so the close function should be called
-	// immediately
-	closed := false
-	tg.OnStop(func() { closed = true })
-	if !closed {
-		t.Fatal("close function should have been called immediately")
-	}
+	tg.Stop()
 }
 
 func BenchmarkThreadGroup(b *testing.B) {
@@ -203,17 +198,4 @@ func BenchmarkWaitGroup(b *testing.B) {
 		go wg.Done()
 	}
 	wg.Wait()
-}
-
-// TestNewContext tests that contexts created by NewContext are canceled when
-// their associated ThreadGroup is stopped.
-func TestNewContext(t *testing.T) {
-	var tg ThreadGroup
-	ctx := tg.NewContext(context.Background())
-	tg.Stop()
-	select {
-	case <-ctx.Done():
-	case <-time.After(1 * time.Second):
-		t.Fatal("context should have been canceled")
-	}
 }

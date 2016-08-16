@@ -38,13 +38,10 @@ type ThreadGroup struct {
 	wg       sync.WaitGroup
 }
 
-// StopChan provides read-only access to the ThreadGroup's stopChan. Callers
-// should select on StopChan in order to interrupt long-running reads (such as
-// time.After).
+// StopChan returns a channel that is closed when Stop is called. Callers
+// should select on StopChan in order to interrupt long-running operations
+// (such as time.After).
 func (tg *ThreadGroup) StopChan() <-chan struct{} {
-	// Initialize tg.stopChan if it is nil; this makes an uninitialized
-	// ThreadGroup valid. (Otherwise, a NewThreadGroup function would be
-	// necessary.)
 	tg.chanOnce.Do(func() { tg.stopChan = make(chan struct{}) })
 	return tg.stopChan
 }
@@ -59,7 +56,8 @@ func (tg *ThreadGroup) IsStopped() bool {
 	}
 }
 
-// Add increments the ThreadGroup counter.
+// Add increments the ThreadGroup counter and returns true if Stop has not yet
+// been called. Otherwise, it returns false and does nothing.
 func (tg *ThreadGroup) Add() bool {
 	tg.mu.Lock()
 	defer tg.mu.Unlock()
@@ -70,13 +68,14 @@ func (tg *ThreadGroup) Add() bool {
 	return true
 }
 
-// Done decrements the ThreadGroup counter.
+// Done decrements the ThreadGroup counter. As with sync.WaitGroup, calling
+// Done when the counter is zero will result in a panic.
 func (tg *ThreadGroup) Done() {
 	tg.wg.Done()
 }
 
 // Stop closes the ThreadGroup's StopChan and blocks until the counter is
-// zero.
+// zero. After the StopChan has been closed, calls to Add will return false.
 func (tg *ThreadGroup) Stop() bool {
 	tg.mu.Lock()
 	if tg.IsStopped() {
@@ -106,8 +105,10 @@ func (tg *ThreadGroup) Stop() bool {
 //
 // In this example, when tg.Stop is called, the listener will be closed,
 // causing l.Accept to return an error and thus preventing the creation of new
-// goroutines. Note that it is generally unnecessary to call Add/Done inside
-// the OnStop function.
+// goroutines. Note that if OnStop is called in a goroutine, it may be
+// necessary to call Add/Done inside fn to ensure that Stop does not return
+// until fn has returned. Furthermore, note that the caller is responsible for
+// the ordering of multiple OnStop functions.
 func (tg *ThreadGroup) OnStop(fn func()) {
 	<-tg.StopChan()
 	fn()
